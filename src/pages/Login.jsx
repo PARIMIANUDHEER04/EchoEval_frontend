@@ -3,12 +3,17 @@ import { supabase } from "../supabaseClient";
 
 export default function Login() {
   const loginWithGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}/`,
       },
     });
+    
+    if (error) {
+      console.error("Login error:", error);
+      alert("Failed to login. Please try again.");
+    }
   };
 
   return (

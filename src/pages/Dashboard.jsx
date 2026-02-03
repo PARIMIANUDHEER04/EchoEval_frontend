@@ -5,7 +5,6 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   return (
-    /* flex-1 ensures it takes up the remaining space next to your existing sidebar */
     <div className="flex-1 min-h-screen bg-[#f8fafc] p-8 md:p-12">
       <div className="max-w-5xl mx-auto">
         
@@ -19,7 +18,7 @@ export default function Dashboard() {
           </p>
         </header>
 
-        {/* Hero Coaching Card - High Contrast Version */}
+        {/* Hero Coaching Card */}
         <div className="relative group overflow-hidden bg-white rounded-[40px] border border-slate-200 shadow-xl shadow-blue-100/40 p-10 md:p-16 mb-10 transition-all hover:shadow-2xl hover:border-blue-200">
           <div className="relative z-10 flex flex-col items-center text-center">
             <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-1.5 rounded-full text-xs font-black mb-8 uppercase tracking-[0.2em] border border-blue-100">
@@ -44,7 +43,6 @@ export default function Dashboard() {
             </button>
           </div>
           
-          {/* Subtle decoration to break the "white-on-white" look */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-50 to-transparent rounded-full blur-3xl -mr-32 -mt-32 opacity-50" />
         </div>
 

@@ -45,9 +45,11 @@ export default function VoiceSession() {
   const loadRoles = async () => {
     try {
       const res = await fetch(`${API_URL}/roles`);
+      if (!res.ok) throw new Error('Failed to fetch roles');
       const data = await res.json();
       setRoles(data);
     } catch (err) {
+      console.error('Failed to load roles:', err);
       setError('Failed to load roles');
     }
   };
@@ -61,12 +63,12 @@ export default function VoiceSession() {
     
     try {
       console.log('📊 Loading previous results for:', user.email, selectedRole);
-      const res = await fetch(`${API_URL}/evaluations/${user.email}/role/${selectedRole}`);
+      const res = await fetch(`${API_URL}/evaluations/${encodeURIComponent(user.email)}/role/${encodeURIComponent(selectedRole)}`);
       
       if (res.ok) {
         const data = await res.json();
         console.log('✅ Loaded results:', data.evaluations);
-        setPreviousResults(data.evaluations);
+        setPreviousResults(data.evaluations || []);
       } else {
         throw new Error('Failed to load results');
       }
@@ -100,7 +102,6 @@ export default function VoiceSession() {
     vapi.on('call-end', () => {
       console.log('✅ Call ended');
       setIsCalling(false);
-      // Don't show processing - just let user refresh the results card
     });
 
     vapi.on('error', (err) => {
@@ -133,7 +134,9 @@ export default function VoiceSession() {
 
       const res = await fetch(`${API_URL}/session/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           role: selectedRole,
           candidate_name: candidateName,
@@ -142,7 +145,8 @@ export default function VoiceSession() {
       });
 
       if (!res.ok) {
-        throw new Error('Failed to start session');
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to start session');
       }
 
       const data = await res.json();
@@ -200,12 +204,11 @@ export default function VoiceSession() {
     return 'bg-red-500';
   };
 
-  // ==================== MAIN VIEW ====================
   return (
     <div className="flex-1 p-8">
       <button
         onClick={() => navigate('/')}
-        className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6"
+        className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6 transition-colors"
       >
         <ArrowLeft size={20} />
         Back to Dashboard
