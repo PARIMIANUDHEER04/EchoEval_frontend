@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import Vapi from '@vapi-ai/web';
 import { Mic, Square, ArrowLeft, RefreshCw, Clock, Trophy } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || "https://echo-eval-backend.vercel.app/";
 let vapi = null;
 
 export default function VoiceSession() {
