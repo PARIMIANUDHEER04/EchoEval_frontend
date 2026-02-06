@@ -1,54 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { 
-  Mic, 
-  TrendingUp, 
-  LogOut, 
-  RefreshCw, 
-  Award,
-  Target,
-  BarChart3,
-  Clock,
-  ChevronRight,
-  Zap,
-  Calendar,
-  Activity,
-  TrendingDown,
-  User,
-  Settings,
-  Home,
-  History,
-  Star,
-  AlertCircle,
-  CheckCircle2,
-  XCircle,
-  Filter,
-  Download,
-  Share2
+import { toast } from 'sonner';
+import Layout from '../components/Layout';
+import { DashboardSkeleton } from '../components/ui/Skeleton';
+import AnimatedCounter from '../components/ui/AnimatedCounter';
+import RadialProgress from '../components/ui/RadialProgress';
+import GlowCard from '../components/ui/GlowCard';
+import EmptyState from '../components/ui/EmptyState';
+import {
+  Mic, TrendingUp, Award, Target, BarChart3, Clock, ArrowRight,
+  Calendar, Activity, TrendingDown, Star, Filter, ChevronRight,
 } from 'lucide-react';
 
 const API_URL = "https://echo-eval-backend.vercel.app";
 
-const ROLE_ICONS = {
-  'Project Manager': '📊',
-  'Team Lead': '👥',
-  'Product Owner': '🎯',
-  'Sales Manager': '💼'
-};
-
-const ROLE_COLORS = {
-  'Project Manager': 'from-blue-500 to-blue-600',
-  'Team Lead': 'from-purple-500 to-purple-600',
-  'Product Owner': 'from-emerald-500 to-emerald-600',
-  'Sales Manager': 'from-orange-500 to-orange-600'
-};
-
-const ROLE_BG_LIGHT = {
-  'Project Manager': 'bg-blue-50',
-  'Team Lead': 'bg-purple-50',
-  'Product Owner': 'bg-emerald-50',
-  'Sales Manager': 'bg-orange-50'
+const ROLE_META = {
+  'Project Manager': { color: '#3b82f6', bg: 'bg-blue-500/10', text: 'text-blue-400', dot: 'bg-blue-500' },
+  'Team Lead':       { color: '#8b5cf6', bg: 'bg-violet-500/10', text: 'text-violet-400', dot: 'bg-violet-500' },
+  'Product Owner':   { color: '#10b981', bg: 'bg-emerald-500/10', text: 'text-emerald-400', dot: 'bg-emerald-500' },
+  'Sales Manager':   { color: '#f59e0b', bg: 'bg-amber-500/10', text: 'text-amber-400', dot: 'bg-amber-500' },
 };
 
 export default function Dashboard() {
@@ -59,27 +30,13 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState('all');
-  const [timeFilter, setTimeFilter] = useState('all'); // all, week, month
   const [overallStats, setOverallStats] = useState({
-    totalEvaluations: 0,
-    averageScore: 0,
-    totalTime: 0,
-    bestRole: null,
-    improvementRate: 0,
-    completionRate: 100,
-    recentActivity: []
+    totalEvaluations: 0, averageScore: 0, totalTime: 0,
+    bestRole: null, improvementRate: 0, recentActivity: []
   });
 
-  useEffect(() => {
-    loadUser();
-    loadRoles();
-  }, []);
-
-  useEffect(() => {
-    if (user?.email && roles.length > 0) {
-      loadAllRoleStats();
-    }
-  }, [user, roles]);
+  useEffect(() => { loadUser(); loadRoles(); }, []);
+  useEffect(() => { if (user?.email && roles.length > 0) loadAllRoleStats(); }, [user, roles]);
 
   const loadUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -89,680 +46,276 @@ export default function Dashboard() {
   const loadRoles = async () => {
     try {
       const res = await fetch(`${API_URL}/roles`);
-      if (!res.ok) throw new Error('Failed to fetch roles');
-      const data = await res.json();
-      setRoles(data);
-    } catch (err) {
-      console.error('Failed to load roles:', err);
-    }
+      if (!res.ok) throw new Error();
+      setRoles(await res.json());
+    } catch { toast.error('Failed to load roles'); }
   };
 
   const loadAllRoleStats = async () => {
     setLoading(true);
     const stats = {};
-    let totalEvals = 0;
-    let totalScoreSum = 0;
-    let totalTimeSum = 0;
-    let bestRoleScore = 0;
-    let bestRoleName = null;
-    let allEvaluations = [];
-    let improvementSum = 0;
-    let improvementCount = 0;
+    let totalEvals = 0, totalScoreSum = 0, totalTimeSum = 0;
+    let bestRoleScore = 0, bestRoleName = null, allEvaluations = [];
+    let improvementSum = 0, improvementCount = 0;
 
     for (const role of roles) {
       try {
-        const res = await fetch(
-          `${API_URL}/evaluations/${encodeURIComponent(user.email)}/role/${encodeURIComponent(role.id)}`
-        );
-        
-        if (res.ok) {
-          const data = await res.json();
-          const evaluations = data.evaluations || [];
-          
-          if (evaluations.length > 0) {
-            const avgScore = evaluations.reduce((sum, e) => sum + e.overall_score, 0) / evaluations.length;
-            const totalTime = evaluations.reduce((sum, e) => sum + e.duration_minutes, 0);
-            const latestEval = evaluations[0];
-            
-            // Calculate trend
-            let trend = 0;
-            if (evaluations.length >= 2) {
-              trend = evaluations[0].overall_score - evaluations[1].overall_score;
-              improvementSum += trend;
-              improvementCount++;
-            }
-            
-            // Calculate score distribution
-            const scoreDistribution = {
+        const res = await fetch(`${API_URL}/evaluations/${encodeURIComponent(user.email)}/role/${encodeURIComponent(role.id)}`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        const evaluations = data.evaluations || [];
+
+        if (evaluations.length > 0) {
+          const avgScore = evaluations.reduce((s, e) => s + e.overall_score, 0) / evaluations.length;
+          const totalTime = evaluations.reduce((s, e) => s + e.duration_minutes, 0);
+          let trend = 0;
+          if (evaluations.length >= 2) { trend = evaluations[0].overall_score - evaluations[1].overall_score; improvementSum += trend; improvementCount++; }
+
+          stats[role.title] = {
+            count: evaluations.length, averageScore: avgScore, latestScore: evaluations[0].overall_score,
+            totalTime, trend, latestDate: evaluations[0].created_at, evaluations,
+            scoreDistribution: {
               excellent: evaluations.filter(e => e.overall_score >= 8).length,
               good: evaluations.filter(e => e.overall_score >= 6 && e.overall_score < 8).length,
-              needsWork: evaluations.filter(e => e.overall_score < 6).length
-            };
-            
-            stats[role.title] = {
-              count: evaluations.length,
-              averageScore: avgScore,
-              latestScore: latestEval.overall_score,
-              totalTime: totalTime,
-              trend: trend,
-              latestDate: latestEval.created_at,
-              evaluations: evaluations,
-              scoreDistribution: scoreDistribution,
-              bestScore: Math.max(...evaluations.map(e => e.overall_score)),
-              worstScore: Math.min(...evaluations.map(e => e.overall_score)),
-              consistency: calculateConsistency(evaluations.map(e => e.overall_score))
-            };
-
-            totalEvals += evaluations.length;
-            totalScoreSum += avgScore * evaluations.length;
-            totalTimeSum += totalTime;
-            allEvaluations = [...allEvaluations, ...evaluations.map(e => ({ ...e, roleTitle: role.title }))];
-
-            if (avgScore > bestRoleScore) {
-              bestRoleScore = avgScore;
-              bestRoleName = role.title;
-            }
-          } else {
-            stats[role.title] = {
-              count: 0,
-              averageScore: 0,
-              latestScore: 0,
-              totalTime: 0,
-              trend: 0,
-              latestDate: null,
-              evaluations: [],
-              scoreDistribution: { excellent: 0, good: 0, needsWork: 0 },
-              bestScore: 0,
-              worstScore: 0,
-              consistency: 0
-            };
-          }
+              needsWork: evaluations.filter(e => e.overall_score < 6).length,
+            },
+            bestScore: Math.max(...evaluations.map(e => e.overall_score)),
+          };
+          totalEvals += evaluations.length;
+          totalScoreSum += avgScore * evaluations.length;
+          totalTimeSum += totalTime;
+          allEvaluations = [...allEvaluations, ...evaluations.map(e => ({ ...e, roleTitle: role.title }))];
+          if (avgScore > bestRoleScore) { bestRoleScore = avgScore; bestRoleName = role.title; }
+        } else {
+          stats[role.title] = { count: 0, averageScore: 0, latestScore: 0, totalTime: 0, trend: 0, latestDate: null, evaluations: [], scoreDistribution: { excellent: 0, good: 0, needsWork: 0 }, bestScore: 0 };
         }
-      } catch (err) {
-        console.error(`Failed to load stats for ${role.title}:`, err);
-      }
+      } catch (err) { console.error(`Failed to load stats for ${role.title}:`, err); }
     }
 
-    // Sort all evaluations by date
     allEvaluations.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
     setRoleStats(stats);
     setOverallStats({
       totalEvaluations: totalEvals,
       averageScore: totalEvals > 0 ? totalScoreSum / totalEvals : 0,
-      totalTime: totalTimeSum,
-      bestRole: bestRoleName,
-      improvementRate: improvementCount > 0 ? (improvementSum / improvementCount) : 0,
-      completionRate: 100,
-      recentActivity: allEvaluations.slice(0, 10)
+      totalTime: totalTimeSum, bestRole: bestRoleName,
+      improvementRate: improvementCount > 0 ? improvementSum / improvementCount : 0,
+      recentActivity: allEvaluations.slice(0, 20),
     });
     setLoading(false);
   };
 
-  const calculateConsistency = (scores) => {
-    if (scores.length < 2) return 100;
-    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-    const variance = scores.reduce((sum, score) => sum + Math.pow(score - avg, 2), 0) / scores.length;
-    const stdDev = Math.sqrt(variance);
-    return Math.max(0, 100 - (stdDev * 10));
+  const scoreColor = (s) => s >= 8 ? 'text-emerald-600' : s >= 6 ? 'text-amber-600' : 'text-red-600';
+  const scoreLabel = (s) => s >= 8 ? 'Excellent' : s >= 6 ? 'Good' : 'Needs work';
+  const formatTime = (m) => m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+  const formatDate = (d) => {
+    if (!d) return 'Never';
+    const diff = Math.ceil(Math.abs(new Date() - new Date(d)) / 86400000);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    if (diff < 7) return `${diff}d ago`;
+    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/');
-  };
-
-  const getScoreColor = (score) => {
-    if (score >= 8) return 'text-emerald-600';
-    if (score >= 6) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const getScoreBg = (score) => {
-    if (score >= 8) return 'bg-emerald-50 border-emerald-200';
-    if (score >= 6) return 'bg-yellow-50 border-yellow-200';
-    return 'bg-red-50 border-red-200';
-  };
-
-  const getScoreLabel = (score) => {
-    if (score >= 8) return 'Excellent';
-    if (score >= 6) return 'Good';
-    return 'Needs Work';
-  };
-
-  const formatTime = (minutes) => {
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h ${mins}m`;
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'Never';
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffTime = Math.abs(now - date);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
-  const exportData = () => {
-    // Implementation for exporting data as CSV or PDF
-    console.log('Exporting data...');
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-600 font-semibold">Loading your analytics...</p>
-        </div>
-      </div>
-    );
-  }
+  const tabs = ['overview', 'history'];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 flex">
-      {/* SIDEBAR */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shadow-lg fixed h-screen">
-        {/* Logo */}
-        <div className="p-6 border-b border-slate-200">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
-              <Zap className="text-white" size={20} />
-            </div>
-            <div>
-              <h1 className="text-lg font-black text-slate-900">AI Voice Coach</h1>
-              <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Pro Platform</p>
-            </div>
+    <Layout onRefresh={loadAllRoleStats}>
+      {loading ? <DashboardSkeleton /> : (
+        <div className="animate-fade-in">
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-2xl font-semibold text-fg mb-1">
+              Welcome back{user?.user_metadata?.full_name ? `, ${user.user_metadata.full_name.split(' ')[0]}` : ''}
+            </h1>
+            <p className="text-sm text-fg-muted">Here's an overview of your evaluation performance.</p>
           </div>
-        </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 p-4">
-          <div className="space-y-1">
-            <button
-              onClick={() => setActiveTab('overview')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all ${
-                activeTab === 'overview'
-                  ? 'bg-blue-50 text-blue-700 shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Home size={20} />
-              <span>Overview</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all ${
-                activeTab === 'analytics'
-                  ? 'bg-blue-50 text-blue-700 shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <BarChart3 size={20} />
-              <span>Analytics</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all ${
-                activeTab === 'history'
-                  ? 'bg-blue-50 text-blue-700 shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <History size={20} />
-              <span>History</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/session')}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md mt-4"
-            >
-              <Mic size={20} />
-              <span>New Session</span>
-            </button>
-          </div>
-        </nav>
-
-        {/* User Section */}
-        <div className="p-4 border-t border-slate-200">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-slate-700 to-slate-900 rounded-full flex items-center justify-center">
-              <User className="text-white" size={18} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-slate-900 truncate">
-                {user?.user_metadata?.full_name || 'User'}
-              </p>
-              <p className="text-xs text-slate-500 truncate">{user?.email}</p>
-            </div>
-          </div>
-          
-          <div className="flex gap-2">
-            <button
-              onClick={loadAllRoleStats}
-              className="flex-1 p-2 hover:bg-slate-100 rounded-lg transition-colors flex items-center justify-center"
-              title="Refresh Data"
-            >
-              <RefreshCw size={16} className="text-slate-600" />
-            </button>
-            <button
-              onClick={handleLogout}
-              className="flex-1 p-2 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center text-red-600"
-              title="Logout"
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* MAIN CONTENT */}
-      <main className="flex-1 ml-64 p-8 overflow-y-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h2 className="text-4xl font-black text-slate-900">
-                Welcome back, {user?.user_metadata?.full_name?.split(' ')[0] || 'Champion'}! 👋
-              </h2>
-              <p className="text-lg text-slate-600 mt-1">
-                Here's your performance across all leadership roles
-              </p>
-            </div>
-            <div className="flex gap-2">
+          {/* Tabs */}
+          <div className="flex gap-1 mb-8 border-b border-edge">
+            {tabs.map(tab => (
               <button
-                onClick={exportData}
-                className="px-4 py-2 bg-white border-2 border-slate-200 rounded-xl font-semibold text-slate-700 hover:border-slate-300 hover:shadow-md transition-all flex items-center gap-2"
-              >
-                <Download size={18} />
-                Export
-              </button>
-            </div>
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2.5 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
+                  activeTab === tab ? 'border-fg text-fg' : 'border-transparent text-fg-faint hover:text-fg-muted'
+                }`}
+              >{tab}</button>
+            ))}
           </div>
-        </div>
 
-        {/* OVERVIEW TAB */}
-        {activeTab === 'overview' && (
-          <>
-            {/* Key Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white rounded-2xl p-6 border-2 border-slate-200 shadow-sm hover:shadow-lg transition-all">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                    <Target className="text-blue-600" size={24} />
-                  </div>
-                  <div className="text-right">
-                    <p className="text-3xl font-black text-slate-900">{overallStats.totalEvaluations}</p>
-                    <p className="text-xs text-slate-500 font-semibold">Total</p>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 font-semibold">Evaluations Completed</p>
-                <div className="mt-3 flex items-center gap-1 text-xs">
-                  <CheckCircle2 className="text-green-500" size={14} />
-                  <span className="text-green-600 font-bold">{overallStats.completionRate}% completion rate</span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl p-6 border-2 border-slate-200 shadow-sm hover:shadow-lg transition-all">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center">
-                    <Star className="text-emerald-600" size={24} />
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-3xl font-black ${getScoreColor(overallStats.averageScore)}`}>
-                      {overallStats.averageScore.toFixed(1)}
-                    </p>
-                    <p className="text-xs text-slate-500 font-semibold">/ 10</p>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 font-semibold">Average Score</p>
-                <div className="mt-3 flex items-center gap-1 text-xs">
-                  <Activity className="text-blue-500" size={14} />
-                  <span className="text-slate-600 font-bold">Across all roles</span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl p-6 border-2 border-slate-200 shadow-sm hover:shadow-lg transition-all">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
-                    <Clock className="text-purple-600" size={24} />
-                  </div>
-                  <div className="text-right">
-                    <p className="text-3xl font-black text-slate-900">{formatTime(overallStats.totalTime)}</p>
-                    <p className="text-xs text-slate-500 font-semibold">Time</p>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 font-semibold">Total Practice Time</p>
-                <div className="mt-3 flex items-center gap-1 text-xs">
-                  <TrendingUp className="text-purple-500" size={14} />
-                  <span className="text-slate-600 font-bold">Dedicated learning</span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl p-6 border-2 border-slate-200 shadow-sm hover:shadow-lg transition-all">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center">
-                    <Award className="text-amber-600" size={24} />
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-sm font-black ${overallStats.improvementRate >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {overallStats.improvementRate >= 0 ? '+' : ''}{overallStats.improvementRate.toFixed(1)}
-                    </p>
-                    <p className="text-xs text-slate-500 font-semibold">Trend</p>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 font-semibold">Improvement Rate</p>
-                <div className="mt-3 flex items-center gap-1 text-xs">
-                  {overallStats.improvementRate >= 0 ? (
-                    <>
-                      <TrendingUp className="text-green-500" size={14} />
-                      <span className="text-green-600 font-bold">Positive growth</span>
-                    </>
-                  ) : (
-                    <>
-                      <TrendingDown className="text-red-500" size={14} />
-                      <span className="text-red-600 font-bold">Needs focus</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Role Performance Cards */}
-            <div className="mb-6">
-              <h3 className="text-2xl font-black text-slate-900 mb-4">Performance by Role</h3>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              {roles.map((role) => {
-                const stats = roleStats[role.title] || {
-                  count: 0,
-                  averageScore: 0,
-                  latestScore: 0,
-                  totalTime: 0,
-                  trend: 0,
-                  latestDate: null,
-                  scoreDistribution: { excellent: 0, good: 0, needsWork: 0 },
-                  bestScore: 0,
-                  worstScore: 0,
-                  consistency: 0
-                };
-
-                return (
-                  <div
-                    key={role.id}
-                    className="bg-white rounded-3xl border-2 border-slate-200 overflow-hidden hover:border-blue-300 hover:shadow-xl transition-all duration-300 group cursor-pointer"
-                    onClick={() => navigate('/session', { state: { selectedRole: role.id } })}
-                  >
-                    {/* Header */}
-                    <div className={`bg-gradient-to-r ${ROLE_COLORS[role.title]} p-6 text-white relative overflow-hidden`}>
-                      <div className="absolute top-0 right-0 text-8xl opacity-10">
-                        {ROLE_ICONS[role.title]}
+          {/* OVERVIEW */}
+          {activeTab === 'overview' && (
+            <>
+              {/* Metrics row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                {[
+                  { label: 'Total evaluations', value: overallStats.totalEvaluations, icon: Target },
+                  { label: 'Average score', value: overallStats.averageScore, decimals: 1, isScore: true, icon: Star },
+                  { label: 'Practice time', valueText: formatTime(overallStats.totalTime), icon: Clock },
+                  { label: 'Improvement', value: overallStats.improvementRate, decimals: 1, prefix: overallStats.improvementRate >= 0 ? '+' : '', isTrend: true, icon: overallStats.improvementRate >= 0 ? TrendingUp : TrendingDown },
+                ].map((m, i) => {
+                  const Icon = m.icon;
+                  return (
+                    <div key={m.label} className={`bg-card border border-edge rounded-xl p-5 animate-slide-up stagger-${i + 1}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-medium text-fg-muted uppercase tracking-wider">{m.label}</span>
+                        <Icon size={15} className="text-fg-faint" strokeWidth={1.5} />
                       </div>
-                      <div className="relative z-10">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="text-4xl">{ROLE_ICONS[role.title]}</div>
-                          <div className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full">
-                            <p className="text-xs font-bold">{stats.count} sessions</p>
-                          </div>
-                        </div>
-                        <h3 className="text-2xl font-black mb-1">{role.title}</h3>
-                        <p className="text-white/80 text-sm">{role.description}</p>
-                      </div>
-                    </div>
-
-                    {/* Stats Body */}
-                    <div className="p-6">
-                      {stats.count > 0 ? (
-                        <>
-                          {/* Score Display */}
-                          <div className="flex items-center justify-between mb-6">
-                            <div>
-                              <p className="text-sm text-slate-600 font-medium mb-1">Average Score</p>
-                              <div className="flex items-baseline gap-2">
-                                <span className={`text-4xl font-black ${getScoreColor(stats.averageScore)}`}>
-                                  {stats.averageScore.toFixed(1)}
-                                </span>
-                                <span className="text-slate-400 text-lg font-semibold">/ 10</span>
-                                <span className={`text-xs px-2 py-1 rounded-full font-bold ${
-                                  stats.averageScore >= 8 ? 'bg-emerald-100 text-emerald-700' :
-                                  stats.averageScore >= 6 ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-red-100 text-red-700'
-                                }`}>
-                                  {getScoreLabel(stats.averageScore)}
-                                </span>
-                              </div>
-                            </div>
-                            
-                            <div className={`w-20 h-20 rounded-2xl border-2 flex items-center justify-center ${getScoreBg(stats.latestScore)}`}>
-                              <div className="text-center">
-                                <div className={`text-2xl font-black ${getScoreColor(stats.latestScore)}`}>
-                                  {stats.latestScore.toFixed(1)}
-                                </div>
-                                <div className="text-[10px] text-slate-600 font-semibold -mt-1">Latest</div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Score Distribution */}
-                          <div className="mb-6 p-4 bg-slate-50 rounded-xl">
-                            <p className="text-xs font-bold text-slate-700 mb-3 uppercase tracking-wide">Score Distribution</p>
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                                  <span className="text-sm text-slate-700 font-medium">Excellent (8-10)</span>
-                                </div>
-                                <span className="text-sm font-black text-slate-900">{stats.scoreDistribution.excellent}</span>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                                  <span className="text-sm text-slate-700 font-medium">Good (6-7.9)</span>
-                                </div>
-                                <span className="text-sm font-black text-slate-900">{stats.scoreDistribution.good}</span>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                                  <span className="text-sm text-slate-700 font-medium">Needs Work (&lt;6)</span>
-                                </div>
-                                <span className="text-sm font-black text-slate-900">{stats.scoreDistribution.needsWork}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Metrics Grid */}
-                          <div className="grid grid-cols-3 gap-3 mb-6">
-                            <div className="bg-slate-50 rounded-xl p-3 text-center">
-                              <div className="flex items-center justify-center gap-1 mb-1">
-                                <TrendingUp size={14} className={stats.trend >= 0 ? 'text-green-500' : 'text-red-500'} />
-                                <p className="text-xs text-slate-600 font-semibold">Trend</p>
-                              </div>
-                              <p className={`text-lg font-black ${stats.trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {stats.trend > 0 ? '+' : ''}{stats.trend.toFixed(1)}
-                              </p>
-                            </div>
-                            
-                            <div className="bg-slate-50 rounded-xl p-3 text-center">
-                              <div className="flex items-center justify-center gap-1 mb-1">
-                                <Clock size={14} className="text-blue-500" />
-                                <p className="text-xs text-slate-600 font-semibold">Time</p>
-                              </div>
-                              <p className="text-lg font-black text-slate-900">
-                                {formatTime(stats.totalTime)}
-                              </p>
-                            </div>
-
-                            <div className="bg-slate-50 rounded-xl p-3 text-center">
-                              <div className="flex items-center justify-center gap-1 mb-1">
-                                <Activity size={14} className="text-purple-500" />
-                                <p className="text-xs text-slate-600 font-semibold">Best</p>
-                              </div>
-                              <p className={`text-lg font-black ${getScoreColor(stats.bestScore)}`}>
-                                {stats.bestScore.toFixed(1)}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Last Session */}
-                          <div className="flex items-center justify-between text-sm pt-4 border-t border-slate-100">
-                            <div>
-                              <p className="text-slate-500 text-xs mb-1">Last session</p>
-                              <p className="font-bold text-slate-900">{formatDate(stats.latestDate)}</p>
-                            </div>
-                            <ChevronRight size={20} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
-                          </div>
-                        </>
+                      {m.valueText ? (
+                        <p className="text-2xl font-semibold text-fg">{m.valueText}</p>
                       ) : (
-                        <div className="text-center py-8">
-                          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                            <Mic className="text-slate-400" size={28} />
-                          </div>
-                          <p className="text-slate-600 font-semibold mb-2">No evaluations yet</p>
-                          <p className="text-sm text-slate-500 mb-4">Start your first session to see your progress</p>
-                          <div className="flex items-center justify-center gap-2 text-blue-600 font-semibold">
-                            <span>Start Evaluation</span>
-                            <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                          </div>
-                        </div>
+                        <AnimatedCounter
+                          value={m.value} decimals={m.decimals || 0} prefix={m.prefix || ''}
+                          className={`text-2xl font-semibold ${m.isScore ? scoreColor(m.value) : m.isTrend ? (m.value >= 0 ? 'text-emerald-600' : 'text-red-600') : 'text-fg'}`}
+                        />
                       )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        {/* ANALYTICS TAB */}
-        {activeTab === 'analytics' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-3xl border-2 border-slate-200 p-8">
-              <h3 className="text-2xl font-black text-slate-900 mb-6">Performance Analytics</h3>
-              
-              {/* Coming Soon Placeholder */}
-              <div className="text-center py-12">
-                <BarChart3 className="text-slate-300 mx-auto mb-4" size={64} />
-                <p className="text-slate-600 font-semibold mb-2">Advanced Analytics Coming Soon</p>
-                <p className="text-slate-500 text-sm">Detailed charts, trends, and insights will be available here</p>
+                  );
+                })}
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* HISTORY TAB */}
-        {activeTab === 'history' && (
-          <div className="space-y-6">
-            {/* Filters */}
-            <div className="bg-white rounded-2xl border-2 border-slate-200 p-4 flex items-center gap-4">
-              <Filter size={20} className="text-slate-400" />
-              <select
-                value={selectedRoleFilter}
-                onChange={(e) => setSelectedRoleFilter(e.target.value)}
-                className="px-4 py-2 border-2 border-slate-200 rounded-xl font-semibold text-slate-700 focus:border-blue-500 focus:outline-none"
-              >
-                <option value="all">All Roles</option>
-                {roles.map(role => (
-                  <option key={role.id} value={role.title}>{role.title}</option>
-                ))}
-              </select>
-              
-              <select
-                value={timeFilter}
-                onChange={(e) => setTimeFilter(e.target.value)}
-                className="px-4 py-2 border-2 border-slate-200 rounded-xl font-semibold text-slate-700 focus:border-blue-500 focus:outline-none"
-              >
-                <option value="all">All Time</option>
-                <option value="week">Last 7 Days</option>
-                <option value="month">Last 30 Days</option>
-              </select>
-            </div>
-
-            {/* History List */}
-            <div className="bg-white rounded-3xl border-2 border-slate-200 overflow-hidden">
-              <div className="p-6 border-b border-slate-200 bg-slate-50">
-                <h3 className="text-xl font-black text-slate-900">Evaluation History</h3>
-                <p className="text-sm text-slate-600 mt-1">
-                  {overallStats.recentActivity.length} total evaluations
-                </p>
+              {/* Role cards */}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-semibold text-fg">Performance by role</h2>
               </div>
-              
-              <div className="divide-y divide-slate-100">
-                {overallStats.recentActivity
-                  .filter(activity => selectedRoleFilter === 'all' || activity.roleTitle === selectedRoleFilter)
-                  .map((activity, index) => (
-                    <div key={activity.id} className="p-6 hover:bg-slate-50 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4 flex-1">
-                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl ${ROLE_BG_LIGHT[activity.roleTitle]}`}>
-                            {ROLE_ICONS[activity.roleTitle]}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                {roles.map((role) => {
+                  const s = roleStats[role.title] || { count: 0, averageScore: 0, latestScore: 0, totalTime: 0, trend: 0, latestDate: null, scoreDistribution: { excellent: 0, good: 0, needsWork: 0 }, bestScore: 0 };
+                  const meta = ROLE_META[role.title] || { color: '#71717a', bg: 'bg-zinc-500/10', text: 'text-zinc-400', dot: 'bg-zinc-500' };
+
+                  return (
+                    <GlowCard key={role.id} onClick={() => navigate('/session', { state: { selectedRole: role.id } })}>
+                      <div className="p-5">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-2 h-2 rounded-full ${meta.dot}`} />
+                            <div>
+                              <h3 className="text-sm font-semibold text-fg">{role.title}</h3>
+                              <p className="text-xs text-fg-faint">{s.count} session{s.count !== 1 ? 's' : ''}</p>
+                            </div>
                           </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-black text-slate-900">{activity.roleTitle}</h4>
-                              {index === 0 && (
-                                <span className="bg-blue-100 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
-                                  Latest
+                          <ChevronRight size={16} className="text-fg-faint" />
+                        </div>
+
+                        {s.count > 0 ? (
+                          <>
+                            <div className="flex items-end justify-between mb-5">
+                              <div>
+                                <p className="text-xs text-fg-muted mb-1">Average</p>
+                                <div className="flex items-baseline gap-1.5">
+                                  <span className={`text-3xl font-semibold ${scoreColor(s.averageScore)}`}>{s.averageScore.toFixed(1)}</span>
+                                  <span className="text-xs text-fg-faint">/10</span>
+                                </div>
+                                <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${meta.bg} ${meta.text} mt-1 inline-block`}>
+                                  {scoreLabel(s.averageScore)}
                                 </span>
-                              )}
+                              </div>
+                              <RadialProgress score={s.latestScore} size={56} strokeWidth={5} />
                             </div>
-                            <p className="text-sm text-slate-600 font-medium">{activity.candidate_name}</p>
-                            <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
-                              <span className="flex items-center gap-1">
-                                <Calendar size={12} />
-                                {formatDate(activity.created_at)}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Clock size={12} />
-                                {activity.duration_minutes}m
-                              </span>
+
+                            {/* Distribution bars */}
+                            <div className="space-y-2 mb-4">
+                              {[
+                                { label: 'Excellent', count: s.scoreDistribution.excellent, color: 'bg-emerald-500' },
+                                { label: 'Good', count: s.scoreDistribution.good, color: 'bg-amber-500' },
+                                { label: 'Needs work', count: s.scoreDistribution.needsWork, color: 'bg-red-500' },
+                              ].map(d => (
+                                <div key={d.label} className="flex items-center gap-3">
+                                  <span className="text-[11px] text-fg-muted w-16">{d.label}</span>
+                                  <div className="flex-1 h-1.5 bg-inset rounded-full overflow-hidden">
+                                    <div className={`h-full ${d.color} rounded-full transition-all duration-700`} style={{ width: s.count > 0 ? `${(d.count / s.count) * 100}%` : '0%' }} />
+                                  </div>
+                                  <span className="text-[11px] text-fg-faint w-4 text-right">{d.count}</span>
+                                </div>
+                              ))}
                             </div>
-                          </div>
-                        </div>
-                        
-                        <div className={`w-20 h-20 rounded-2xl border-2 flex items-center justify-center ${getScoreBg(activity.overall_score)}`}>
-                          <div className="text-center">
-                            <div className={`text-2xl font-black ${getScoreColor(activity.overall_score)}`}>
-                              {activity.overall_score.toFixed(1)}
+
+                            <div className="flex items-center justify-between pt-3 border-t border-edge-subtle">
+                              <div className="flex items-center gap-4 text-xs text-fg-muted">
+                                <span className="flex items-center gap-1">
+                                  {s.trend >= 0 ? <TrendingUp size={12} className="text-emerald-500" /> : <TrendingDown size={12} className="text-red-500" />}
+                                  <span className={s.trend >= 0 ? 'text-emerald-600' : 'text-red-600'}>{s.trend > 0 ? '+' : ''}{s.trend.toFixed(1)}</span>
+                                </span>
+                                <span>Best: {s.bestScore.toFixed(1)}</span>
+                              </div>
+                              <span className="text-xs text-fg-faint">{formatDate(s.latestDate)}</span>
                             </div>
-                            <div className="text-[10px] text-slate-600 font-semibold -mt-1">/ 10</div>
-                          </div>
-                        </div>
+                          </>
+                        ) : (
+                          <EmptyState icon={Mic} title="No sessions yet" description="Start your first evaluation" actionLabel="Start" onAction={() => navigate('/session', { state: { selectedRole: role.id } })} />
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    </GlowCard>
+                  );
+                })}
+              </div>
+
+              {/* CTA */}
+              <div className="bg-accent rounded-xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-fg-accent font-semibold mb-1">Ready to practice?</h3>
+                  <p className="text-fg-accent/60 text-sm">Start a new voice evaluation session.</p>
+                </div>
+                <button onClick={() => navigate('/session')} className="bg-card text-fg px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-card-hover transition-colors flex items-center gap-2">
+                  <Mic size={16} /> New session
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* HISTORY */}
+          {activeTab === 'history' && (
+            <div className="space-y-4 animate-fade-in">
+              <div className="flex items-center gap-3 mb-2">
+                <Filter size={14} className="text-fg-faint" />
+                <select
+                  value={selectedRoleFilter}
+                  onChange={(e) => setSelectedRoleFilter(e.target.value)}
+                  className="text-sm border border-edge rounded-lg px-3 py-1.5 text-fg focus:outline-none focus:border-edge-hover bg-card"
+                >
+                  <option value="all">All roles</option>
+                  {roles.map(r => <option key={r.id} value={r.title}>{r.title}</option>)}
+                </select>
+              </div>
+
+              <div className="bg-card border border-edge rounded-xl overflow-hidden">
+                <div className="divide-y divide-edge-subtle">
+                  {overallStats.recentActivity
+                    .filter(a => selectedRoleFilter === 'all' || a.roleTitle === selectedRoleFilter)
+                    .map((a, i) => {
+                      const meta = ROLE_META[a.roleTitle] || { dot: 'bg-zinc-500', bg: 'bg-zinc-500/10', text: 'text-zinc-400' };
+                      return (
+                        <div key={a.id} className="flex items-center justify-between px-5 py-4 hover:bg-card-hover transition-colors">
+                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${meta.dot}`} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="text-sm font-medium text-fg">{a.roleTitle}</span>
+                                {i === 0 && <span className="text-[10px] font-medium bg-card-hover text-fg-muted px-1.5 py-0.5 rounded">Latest</span>}
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-fg-faint">
+                                <span>{a.candidate_name}</span>
+                                <span className="flex items-center gap-1"><Calendar size={11} />{formatDate(a.created_at)}</span>
+                                <span>{a.duration_minutes}m</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`text-lg font-semibold ${scoreColor(a.overall_score)}`}>
+                            {a.overall_score.toFixed(1)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+                {overallStats.recentActivity.length === 0 && (
+                  <EmptyState icon={BarChart3} title="No evaluations yet" description="Complete your first session to see history" />
+                )}
               </div>
             </div>
-          </div>
-        )}
-
-        {/* CTA Section */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-8 text-white shadow-xl mt-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-3xl font-black mb-2">Ready to improve your skills?</h3>
-              <p className="text-blue-100 text-lg">Start a new evaluation session and continue your growth journey</p>
-            </div>
-            <button
-              onClick={() => navigate('/session')}
-              className="bg-white text-blue-600 px-8 py-4 rounded-2xl font-black text-lg hover:bg-blue-50 transition-all flex items-center gap-3 shadow-lg hover:shadow-xl active:scale-95"
-            >
-              <Mic size={24} />
-              New Session
-            </button>
-          </div>
+          )}
         </div>
-      </main>
-    </div>
+      )}
+    </Layout>
   );
 }
